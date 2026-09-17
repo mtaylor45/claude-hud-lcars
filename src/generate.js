@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
+import { scanWorkspaces } from './lib/workspace.js';
 import { execFileSync } from 'child_process';
 
 // import.meta.dirname is Node 20.11+; fall back for Node 18
@@ -645,6 +646,49 @@ function gen() {
   const projectHistory = getProjectHistory();
   const memBanks = getMemoryBanks();
   const mnemos = getMnemos();
+
+  // ── WORKSPACE AWARENESS ──
+  // Agent configuration lives in repositories, not only in ~/.claude/. Every
+  // list below therefore carries both: a global item keeps its original key so
+  // existing links still resolve, and a project item gets a project-scoped key
+  // so a project skill named the same as a global one cannot overwrite it in
+  // the detail-panel map.
+  const ws = scanWorkspaces();
+
+  skills.forEach(x => { x.key = 's:' + x.name; x.proj = ''; });
+  mcp.forEach(x => { x.key = 'm:' + x.name; x.proj = ''; x.readonly = false; });
+
+  for (const proj of ws.projects) {
+    for (const sk of proj.skills) {
+      skills.push({ ...sk, key: 'ws:' + proj.name + ':' + sk.name, proj: proj.name });
+    }
+    for (const m of proj.mcp) {
+      const cfg = m.config || {};
+      mcp.push({
+        name: m.name, key: 'wm:' + proj.name + ':' + m.name, proj: proj.name,
+        // Project servers are read-only here: the DISABLE button writes to
+        // ~/.claude/settings.json, which is not where these are declared.
+        readonly: true, disabled: false, securityFlags: [],
+        remote: m.remote, url: m.url, serverType: m.transport,
+        cmd: m.remote ? m.transport : (typeof cfg.command === 'string' ? cfg.command : ''),
+        args: m.remote ? [m.url] : (Array.isArray(cfg.args) ? cfg.args : []),
+        entryPoint: '', fileStatus: 'unknown',
+        envCount: m.envCount, hasEnv: m.envCount > 0,
+        source: proj.name + '/' + m.source, config: m.config, file: m.file,
+      });
+    }
+    for (const ins of proj.instructions) {
+      // AGENTS.md is scored and surfaced exactly like CLAUDE.md. It was
+      // previously unrecognised everywhere, so a project whose primary
+      // instruction file is AGENTS.md appeared to have none at all.
+      claudeMds.push({
+        scope: ins.kind === 'AGENTS.md' ? 'AGENTS.MD' : 'PROJECT',
+        path: ins.file, project: proj.name + '/' + ins.rel,
+        body: ins.body, size: ins.body.length, health: scoreClaudeMd(ins.body),
+      });
+    }
+  }
+
   const ts = new Date().toISOString().replace('T',' ').slice(0,19)+'Z';
   const stardate = new Date().toISOString().slice(0,10).replace(/-/g,'.');
 
@@ -746,8 +790,19 @@ function gen() {
   skills.forEach(s => {
     const skillPath = path.join(CLAUDE_DIR, 'skills', s.name, 'SKILL.md');
     const skillDir  = path.join(CLAUDE_DIR, 'skills', s.name);
-    D['s:'+s.name] = { t: s.name, tp: 'SKILL MODULE', m: (s.ver?'v'+s.ver:'')+(s.ctx?' // '+s.ctx:''), b: s.body,
-      actions: [
+    // A project skill lives in a repository, so its path is the file the scan
+    // found and DELETE is withheld — removing a tracked file from a dashboard
+    // is not a safe one-click action.
+    const isProj = !!s.proj;
+    const filePath = isProj ? s.file : skillPath;
+    D[s.key] = { t: s.name, tp: isProj ? 'SKILL MODULE // ' + s.proj : 'SKILL MODULE',
+      m: [s.ver?'v'+s.ver:'', s.ctx||'', isProj ? s.proj + ' :: ' + s.origin : ''].filter(Boolean).join(' // '),
+      b: s.body,
+      actions: isProj ? [
+        { label: 'INVOKE', cmd: '/'+s.name, icon: 'RUN' },
+        { label: 'OPEN FILE', cmd: 'open '+filePath, icon: 'EDIT' },
+        { label: 'COPY PATH', cmd: filePath, icon: 'PATH' },
+      ] : [
         { label: 'INVOKE', cmd: '/'+s.name, icon: 'RUN' },
         { label: 'OPEN FILE', cmd: 'open '+skillPath, icon: 'EDIT' },
         { label: 'COPY PATH', cmd: skillPath, icon: 'PATH' },
@@ -764,8 +819,15 @@ function gen() {
       ]};
   });
   mcp.forEach(s => {
-    D['m:'+s.name] = { t: s.name, tp: 'MCP SERVER CONFIG', m: s.cmd+' '+s.args.join(' '), b: JSON.stringify(s.config,null,2),
-      actions: [
+    D[s.key] = { t: s.name,
+      tp: s.proj ? 'MCP SERVER CONFIG // ' + s.proj : 'MCP SERVER CONFIG',
+      m: s.remote ? s.serverType + ' // ' + s.url : (s.cmd+' '+s.args.join(' ')).trim(),
+      b: JSON.stringify(s.config,null,2),
+      actions: s.readonly ? [
+        { label: 'COPY CONFIG', cmd: JSON.stringify(s.config,null,2), icon: 'COPY' },
+        { label: 'OPEN FILE', cmd: 'open '+(s.file||''), icon: 'EDIT' },
+        { label: 'COPY PATH', cmd: s.file||'', icon: 'PATH' },
+      ] : [
         { label: 'COPY CONFIG', cmd: JSON.stringify(s.config,null,2), icon: 'COPY' },
         { label: 'EDIT SETTINGS', cmd: 'open '+path.join(CLAUDE_DIR,'settings.json'), icon: 'EDIT' },
         { label: 'DELETE', cmd: 'mcp:'+s.name, icon: 'DEL' },
@@ -863,6 +925,77 @@ function gen() {
       actions: [
         { label: 'OPEN FILE', cmd: 'open ' + c.path, icon: 'EDIT' },
         { label: 'COPY PATH', cmd: c.path, icon: 'PATH' },
+      ]};
+  });
+
+  // Workspaces
+  ws.projects.forEach(proj => {
+    const lines = [];
+    lines.push('## ' + proj.name);
+    lines.push('');
+    if (proj.plugin) {
+      lines.push('**Agent plugin:** `' + proj.plugin.name + '`' +
+        (proj.plugin.version ? ' v' + proj.plugin.version : '') +
+        (proj.plugin.license ? ' — ' + proj.plugin.license : ''));
+      if (proj.plugin.description) lines.push('');
+      if (proj.plugin.description) lines.push(proj.plugin.description);
+      lines.push('');
+    }
+    lines.push('### Checkouts');
+    lines.push('');
+    for (const d of proj.dirs) lines.push('- `' + d + '`');
+    if (proj.worktrees) lines.push('');
+    if (proj.worktrees) lines.push('_' + proj.worktrees + ' of these ' +
+      (proj.worktrees === 1 ? 'is a worktree' : 'are worktrees') + ', collapsed onto this project._');
+    lines.push('');
+    if (proj.instructions.length) {
+      lines.push('### Instructions');
+      lines.push('');
+      lines.push('| File | Lines |');
+      lines.push('|---|---|');
+      for (const i of proj.instructions) lines.push('| `' + i.rel + '` | ' + i.lines + ' |');
+      lines.push('');
+    }
+    if (proj.skills.length) {
+      lines.push('### Skills (' + proj.skills.length + ')');
+      lines.push('');
+      lines.push('| Skill | From | Description |');
+      lines.push('|---|---|---|');
+      for (const sk of proj.skills) {
+        lines.push('| `' + sk.name + '` | `' + sk.origin + '` | ' + (sk.desc || '').replace(/\|/g, '\\|') + ' |');
+      }
+      lines.push('');
+    }
+    if (proj.mcp.length) {
+      lines.push('### MCP servers (' + proj.mcp.length + ')');
+      lines.push('');
+      lines.push('| Server | Transport | Target | Declared in |');
+      lines.push('|---|---|---|---|');
+      for (const m of proj.mcp) {
+        lines.push('| `' + m.name + '` | ' + m.transport + ' | `' + (m.url || m.display) + '` | `' + m.source + '` |');
+      }
+      lines.push('');
+    }
+    if (proj.subagents.length) {
+      lines.push('### Review subagents (' + proj.subagents.length + ')');
+      lines.push('');
+      for (const a of proj.subagents) {
+        lines.push('- `' + a.name + '`' + (a.plugin ? ' — from `' + a.plugin + '`' : '') +
+          ' _(declared in ' + a.declaredIn + ')_');
+      }
+      lines.push('');
+    }
+    if (!proj.skills.length && !proj.mcp.length && !proj.subagents.length) {
+      lines.push('_No skills, MCP servers or subagents found — only instruction files._');
+    }
+    D['wsp:'+proj.name] = {
+      t: proj.name, tp: 'WORKSPACE',
+      m: [proj.counts.skills + ' skills', proj.counts.mcp + ' mcp',
+          proj.counts.instructions + ' instructions', proj.counts.subagents + ' subagents'].join(' // '),
+      b: lines.join('\n'),
+      actions: [
+        { label: 'OPEN FILE', cmd: 'open ' + proj.dirs[0], icon: 'EDIT' },
+        { label: 'COPY PATH', cmd: proj.dirs[0], icon: 'PATH' },
       ]};
   });
 
@@ -1002,6 +1135,7 @@ function gen() {
 
   const sections = [
     { id: 'skills',   label: 'SKILLS',       color: '#9999FF', count: skills.length },
+    { id: 'projects', label: 'PROJECTS',     color: '#66CC99', count: ws.totals.projects },
     { id: 'mcp',      label: 'MCP SERVERS',  color: '#FF9933', count: mcp.length },
     { id: 'hooks',    label: 'HOOKS',        color: '#CC9966', count: hooks.length },
     { id: 'plugins',  label: 'PLUGINS',      color: '#CC99CC', count: plugins.length },
@@ -1453,6 +1587,13 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--tex
 .ph-card-meta{font-size:0.65rem;color:var(--dim);display:flex;gap:12px}
 .ph-card-sessions{color:var(--cyan)}
 .ph-card-date{color:var(--faint)}
+/* Workspace cards reuse .ph-card's frame. No transition is added here: the
+   design system reserves motion for state changes, not hover. */
+.ph-card-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ph-card-top .ph-card-name{margin-right:auto}
+.ph-card-stats{display:flex;gap:14px;flex-wrap:wrap;font-size:0.65rem;color:var(--dim)}
+.ph-card-stats b{font-family:Antonio,sans-serif;font-size:0.85rem;color:var(--gold);font-weight:700}
+.ph-card-path{font-size:0.6rem;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px;padding:12px}
 .health-badge{display:inline-flex;align-items:center;gap:6px;font-family:Antonio,sans-serif;font-size:0.65rem;letter-spacing:0.1em;padding:3px 10px;border-radius:10px;border:1px solid}
 .health-badge.good{color:var(--green);border-color:rgba(85,204,85,0.4);background:rgba(85,204,85,0.08)}
@@ -2333,12 +2474,57 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--tex
           <div class="cf-actions"><button class="cf-create" onclick="createSkill()">CREATE</button><button class="cf-cancel" onclick="toggleCreate('skill')">CANCEL</button></div>
         </div>
         ${skills.length===0?'<div class="emp">No skills registered</div>':skills.map(s=>`
-        <div class="r" onclick="open_('s:${esc(s.name)}')" data-k="s:${esc(s.name)}">
+        <div class="r" onclick="open_('${esc(s.key)}')" data-k="${esc(s.key)}">
           <span class="r-id">${esc(s.name)}</span>
-          <span class="r-tg">${s.ctx?`<span class="tg tg-b">${esc(s.ctx)}</span>`:''}${s.ver?`<span class="tg tg-d">v${esc(s.ver)}</span>`:''}</span>
+          <span class="r-tg">${s.proj?`<span class="tg tg-g">${esc(s.proj)}</span>`:'<span class="tg tg-d">global</span>'}${s.ctx?`<span class="tg tg-b">${esc(s.ctx)}</span>`:''}${s.ver?`<span class="tg tg-d">v${esc(s.ver)}</span>`:''}</span>
           <span class="r-d">${esc(s.desc)}</span>
         </div>`).join('')}
         ${discoverHtml('skills', skillDiscoverCards, SKILL_SUGG.length)}
+      </div>
+
+      <div class="sec" id="s-projects">
+        <div class="sec-h"><span>Workspaces // Project Registry</span></div>
+        ${ws.error ? `<div class="health-issues" style="padding:8px 16px">&#9888; ~/.lcars/workspaces.json ${esc(ws.error)}</div>` : ''}
+        ${ws.projects.length === 0 ? `<div class="emp" style="text-align:left;padding:16px 20px;line-height:1.7">
+          <strong style="color:var(--orange)">No workspaces registered.</strong><br><br>
+          Your skills, MCP servers and AGENTS.md live in your repositories, not in
+          <code>~/.claude/</code> — so nothing here can see them until you say where to look.<br><br>
+          Create <code>~/.lcars/workspaces.json</code>:
+          <pre style="margin-top:10px">{
+  "roots": ["~/Code", "~/Projects"],
+  "pinned": [],
+  "worktreePattern": "^(?&lt;project&gt;.+?)-wt-.+$"
+}</pre>
+          <span style="color:var(--dim)">Each directory one level under a root that contains
+          <code>AGENTS.md</code>, <code>CLAUDE.md</code>, <code>mcp.json</code>,
+          <code>.mcp.json</code>, <code>plugin.json</code>, <code>skills/</code>,
+          <code>.agents/</code> or <code>.claude/</code> is registered as a project.
+          <code>worktreePattern</code> collapses per-task worktrees onto their project.
+          <code>CLAUDE_HUD_DIRS</code> still works and is merged in.</span>
+        </div>` : `
+        <div class="ph-grid">
+          ${ws.projects.map(proj => `
+          <div class="ph-card" onclick="open_('wsp:${esc(proj.name)}')" data-k="wsp:${esc(proj.name)}">
+            <div class="ph-card-top">
+              <span class="ph-card-name">${esc(proj.name)}</span>
+              ${proj.worktrees ? `<span class="tg tg-d">+${proj.worktrees} wt</span>` : ''}
+              ${proj.plugin ? `<span class="tg tg-o">plugin</span>` : ''}
+            </div>
+            <div class="ph-card-stats">
+              <span><b>${proj.counts.skills}</b> skills</span>
+              <span><b>${proj.counts.mcp}</b> mcp</span>
+              <span><b>${proj.counts.instructions}</b> docs</span>
+              ${proj.counts.subagents ? `<span><b>${proj.counts.subagents}</b> agents</span>` : ''}
+            </div>
+            <div class="ph-card-path">${esc(proj.dirs[0])}</div>
+          </div>`).join('')}
+        </div>
+        <div class="r-d" style="padding:10px 20px;color:var(--dim);font-size:0.7rem">
+          Scanned ${ws.roots.length} root${ws.roots.length === 1 ? '' : 's'}:
+          ${ws.roots.map(r => `<code>${esc(r)}</code>`).join(' ')}
+          &nbsp;//&nbsp; ${ws.totals.skills} skills, ${ws.totals.mcp} MCP servers,
+          ${ws.totals.instructions} instruction files, ${ws.totals.subagents} subagents
+        </div>`}
       </div>
 
       <div class="sec" id="s-mcp">
@@ -2359,17 +2545,18 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--tex
         </div>
         <div class="mcp-grid">
           ${mcp.map(s=>`
-          <div class="mcp-card${s.disabled?' mcp-card-disabled':''}" onclick="open_('m:${esc(s.name)}')" data-k="m:${esc(s.name)}" data-mcp="${esc(s.name)}">
+          <div class="mcp-card${s.disabled?' mcp-card-disabled':''}" onclick="open_('${esc(s.key)}')" data-k="${esc(s.key)}"${s.readonly?'':` data-mcp="${esc(s.name)}"`}>
             <div class="mcp-card-top">
-              <div class="mcp-card-status ${s.disabled?'mcp-disabled':'checking'}" id="mcp-dot-${esc(s.name)}"></div>
+              <div class="mcp-card-status ${s.readonly?'mcp-disabled':(s.disabled?'mcp-disabled':'checking')}"${s.readonly?'':` id="mcp-dot-${esc(s.name)}"`}></div>
               <div class="mcp-card-name">${esc(s.name)}</div>
               <span class="mcp-card-type ${esc(s.serverType)}">${esc(s.serverType)}</span>
+              ${s.proj?`<span class="tg tg-g" style="margin-left:4px">${esc(s.proj)}</span>`:''}
               ${s.securityFlags.length?`<span class="mcp-sec-flag" title="${esc(s.securityFlags.map(f=>f.cve||f.detail).join(', '))}">&#9888; ${s.securityFlags[0].severity||'WARN'}</span>`:''}
             </div>
             <div class="mcp-card-body">
               <div class="mcp-card-row">
-                <span class="mcp-card-label">CMD</span>
-                <span class="mcp-card-val">${esc(s.cmd)} ${esc(s.args.join(' '))}</span>
+                <span class="mcp-card-label">${s.remote?'URL':'CMD'}</span>
+                <span class="mcp-card-val">${s.remote?esc(s.url):esc(s.cmd)+' '+esc(s.args.join(' '))}</span>
               </div>
               ${s.envCount?`<div class="mcp-card-row">
                 <span class="mcp-card-label">ENV</span>
@@ -2381,10 +2568,14 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--tex
               </div>`:''}
             </div>
             <div class="mcp-card-footer">
-              ${s.disabled
+              ${s.readonly
+                ? `<div class="mcp-card-bar"><div class="bar-fill" style="width:100%;background:var(--tan)"></div></div><div class="mcp-card-status-label" style="color:var(--tan)">DECLARED</div>`
+                : s.disabled
                 ? `<div class="mcp-card-bar"><div class="bar-fill" style="width:100%;background:var(--faint)"></div></div><div class="mcp-card-status-label" style="color:var(--dim)">DISABLED</div>`
                 : `<div class="mcp-card-bar"><div class="bar-fill checking"></div></div><div class="mcp-card-status-label checking" id="mcp-label-${esc(s.name)}">CHECKING</div>`}
-              <button class="mcp-toggle-btn" onclick="event.stopPropagation();toggleMcp(${escA(s.name)},${s.disabled})">${s.disabled?'ENABLE':'DISABLE'}</button>
+              ${s.readonly
+                ? `<button class="mcp-toggle-btn" disabled title="Declared in ${esc(s.source)} — edit it in the project" style="opacity:0.45;cursor:default">PROJECT</button>`
+                : `<button class="mcp-toggle-btn" onclick="event.stopPropagation();toggleMcp(${escA(s.name)},${s.disabled})">${s.disabled?'ENABLE':'DISABLE'}</button>`}
             </div>
           </div>`).join('')}
         </div>`}

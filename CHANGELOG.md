@@ -4,6 +4,69 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Workspace awareness — the dashboard can see your repositories
+
+"Sprint 1" from [SPRINT-PLAN.md](SPRINT-PLAN.md), and the reason the fork was
+worth taking over. Every read was previously rooted at `~/.claude/`, so agent
+configuration that lives in a repository was invisible: a dashboard built to
+show every skill and MCP server showed none of the ones actually built in a
+project.
+
+New `src/lib/workspace.js` — pure functions, no new runtime dependencies,
+matching the other modules in that folder.
+
+- **Workspace registry.** `~/.lcars/workspaces.json` declares `roots`, `pinned`
+  and `worktreePattern`. Each directory one level under a root that carries
+  `AGENTS.md`, `CLAUDE.md`, `mcp.json`, `.mcp.json`, `plugin.json`, `skills/`,
+  `.agents/` or `.claude/` is registered as a project; a directory with none of
+  them is skipped, so the registry stays signal rather than a directory
+  listing. A missing or malformed config is reported in the panel, never fatal.
+  `CLAUDE_HUD_DIRS` still works and is merged in
+- **Repo skills.** `skills/*/SKILL.md`, `.agents/skills/*/SKILL.md` and
+  `.claude/skills/*/SKILL.md` are all read. Every skill now carries an origin
+  badge — `global` or the project name
+- **`mcp.json`.** Accepted alongside `.mcp.json` and `.claude/settings.json`.
+  The scanner previously looked only for the dotted name, so a project
+  declaring its servers in `mcp.json` reported none at all
+- **Transport-aware MCP.** `streamable-http`, `http` and `sse` are first-class:
+  a remote server shows its URL instead of rendering as type `unknown` with no
+  command. Project servers are read-only (the DISABLE button writes to
+  `~/.claude/settings.json`, which is not where they are declared), carry no
+  `data-mcp` attribute so the local spawn probe skips them, and read `DECLARED`
+  rather than hanging on `CHECKING`
+- **`AGENTS.md`.** Now a peer of `CLAUDE.md` — listed, scored by
+  `scoreClaudeMd()`, readable in the detail panel, and searchable. It was
+  previously unrecognised everywhere, so a project whose primary instruction
+  file is `AGENTS.md` appeared to have no instructions
+- **Plugin manifests and review subagents.** `plugin.json`
+  (agent-plugins.org schema) is parsed, and `review_agents:` frontmatter in
+  files such as `compound-engineering.local.md` is enumerated — those agents do
+  real work on a repo but were invisible to a scan that only read a plugin's
+  on/off state
+- **Worktree grouping.** `worktreePattern` collapses per-task worktrees onto
+  their project; assets are deduplicated by name, so a project with four active
+  worktrees does not report its skills four times. The card shows a `+N wt`
+  badge. An invalid pattern degrades to "not a worktree" rather than throwing
+- **New PROJECTS section** listing each project with its skill, MCP,
+  instruction and subagent counts, drilling into a full per-project breakdown.
+  With nothing registered it explains what to create and why, which also closes
+  the onboarding gap for a first-time user
+- Detail-panel keys are scoped (`ws:<project>:<skill>`, `wm:<project>:<server>`)
+  so a project item cannot overwrite a global one of the same name. Global keys
+  are unchanged, so existing links still resolve
+- DELETE is withheld from project skills and servers: removing a tracked file
+  from a repository is not a safe one-click dashboard action
+- Tests: `test/workspace.test.js` (51 unit tests over the scan) and
+  `test/workspace-render.test.js` (13 end-to-end tests that generate a
+  dashboard against a fixture HOME with two projects and a worktree, asserting
+  dedup, key isolation, transport rendering, probe exclusion and redaction).
+  409 tests total, 0 failures
+
+**Partial:** SPRINT-PLAN 1.4 asked for project to become the primary UI axis, with
+a selector that filters every section. What landed instead surfaces project
+assets inside the existing sections with an origin badge, plus the PROJECTS
+panel. That delivers the visibility; the filter axis is still open.
+
 ### Responsive layout — left rail scrolling and fluid scaling
 
 Reported against a 13" MacBook: the left navigation column was cut off unless the
