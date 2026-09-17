@@ -4,6 +4,48 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Responsive layout — left rail scrolling and fluid scaling
+
+Reported against a 13" MacBook: the left navigation column was cut off unless the
+browser was zoomed to 50%, which made everything else unreadable. Measured in a
+real Chromium at 1280x710 and 1440x810, it was three separate defects.
+
+- **Nav scroll affordance.** `.sb-nav` had `overflow-y:auto`. With overlay
+  scrollbars that reserves a 0px gutter and shows no thumb at rest, so the ten
+  sections below the fold (MEMORY BANKS through ABOUT) read as absent rather
+  than as scrollable. Now `overflow-y:scroll` with `scrollbar-gutter:stable` —
+  a permanent 10px gutter, measured present at every desktop width
+- **Horizontal clipping at <=1280.** `.lcars` used `grid-template-columns:240px 1fr`.
+  A grid item's automatic minimum size is its min-content width, and the nowrap
+  data cascade and stat tiles push that past 1280px, so the column grew to
+  1083px inside a 1034px space and `body{overflow:hidden}` silently ate 49px of
+  the top and stats bars. Fixed with `minmax(0,1fr)` plus `min-width:0` on every
+  column-2 grid child and on the flex children holding nowrap content — the same
+  technique documented in `mtaylor45/worldmonitor`'s `src/themes/lcars/lcars.css`
+- **Fluid scale.** The chrome was fixed-pixel: 54px nav buttons, 72/48/56/40px
+  grid rows. Nav button height, font size and padding, the sidebar header and
+  footer, and the grid rows now clamp against viewport height with legible
+  floors. Sections visible without scrolling went from 9/19 to 14/19 at
+  1280x710 and 10/19 to 15/19 at 1440x810
+- The stats row keeps a 48px floor: its tiles carry a count *and* a label, and
+  v1.7.1 raised that row for exactly that reason. Short-viewport space comes
+  from the burn-rate row instead, which held 26px of content in a 56px row
+- **Breakpoints.** New bands at 1180px and 1020px narrow the rail (240 -> 200 ->
+  176px) rather than clipping anything. Below 900px the rail becomes a
+  horizontal scrollable strip; it previously set `.sb{display:none}`, which
+  removed every route into the dashboard with nothing put in its place
+- `.computer-bar` and `.computer-response` were pinned to a literal `left:240px`
+  and now track `--sb-w`, so they follow the narrowed rail
+- Tests: new `test/layout.test.js` — 14 assertions pinning the grid, scroll,
+  scale-token and breakpoint contracts. Verified to fail on all 14 against the
+  pre-fix generator. 345 tests total, 0 failures
+
+Verified in Chromium at 1470x865, 1440x810, 1280x710, 1100x700, 860x700 and
+760x620: all 19 nav sections reachable, no document-level horizontal overflow,
+and the main content column never clipped at any of them.
+
+### Sprint 0 — take ownership
+
 Fork maintenance — "Sprint 0" from [SPRINT-PLAN.md](SPRINT-PLAN.md). No feature work.
 
 - Security: the live server now binds `127.0.0.1` by default instead of all
