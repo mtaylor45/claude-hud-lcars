@@ -81,6 +81,12 @@ function solidPng(size) {
 }
 
 const PORT = parseInt(process.env.PORT || '3200', 10);
+// Loopback by default: this server can read and write ~/.claude/ without
+// authentication, so it must not be reachable from the LAN unless asked for.
+// Set HOST=0.0.0.0 deliberately (e.g. a kiosk on a trusted network) and put
+// something in front of it.
+const HOST = process.env.HOST || '127.0.0.1';
+const IS_LOOPBACK = HOST === '127.0.0.1' || HOST === 'localhost' || HOST === '::1';
 const API_KEY = process.env.CLAUDE_DASHBOARD_API_KEY;
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
@@ -1302,12 +1308,12 @@ server.on('error', (err) => {
   process.exit(1);
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
   console.log('');
   console.log('  ╔══════════════════════════════════════════╗');
   console.log('  ║          CLAUDE-HUD // LCARS             ║');
   console.log('  ║                                          ║');
-  console.log('  ║  Dashboard:  http://localhost:' + PORT + '        ║');
+  console.log('  ║  Dashboard:  http://' + HOST + ':' + PORT + ' '.repeat(Math.max(0, 20 - String(HOST).length - String(PORT).length)) + '║');
   console.log('  ║  Chat API:   ' + (API_KEY ? 'ONLINE' : 'OFFLINE (no API key)') + '                ║');
   console.log('  ║  Voice TTS:  ' + (ELEVEN_KEY ? 'ELEVENLABS' : 'BROWSER (free)') + '              ║');
   console.log('  ║  Model:      ' + MODEL.padEnd(28) + '║');
@@ -1316,6 +1322,11 @@ server.listen(PORT, () => {
   console.log('');
   if (!API_KEY) {
     console.log('  Chat disabled. Set CLAUDE_DASHBOARD_API_KEY to enable.');
+    console.log('');
+  }
+  if (!IS_LOOPBACK) {
+    console.log('  WARNING: bound to ' + HOST + ', not loopback.');
+    console.log('  This server can read and write ~/.claude/ with no authentication.');
     console.log('');
   }
 

@@ -1,1 +1,42 @@
-{}
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-merged-branch.sh\"",
+            "timeout": 20,
+            "statusMessage": "Checking branch PR state..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/check-dashboard-js.sh\"",
+            "timeout": 60,
+            "statusMessage": "Syntax-checking dashboard JS..."
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/src/generate.js\" --no-open >/dev/null 2>&1 || true",
+            "timeout": 60,
+            "statusMessage": "Regenerating dashboard..."
+          }
+        ]
+      }
+    ]
+  }
+}

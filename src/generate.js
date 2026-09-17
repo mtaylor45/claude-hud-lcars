@@ -473,7 +473,7 @@ function getProjectHistory() {
         }
       } catch(e) {}
       if (sessionCount === 0) continue;
-      // Decode path: -Users-andrefigueira-Code-foo => /Users/andrefigueira/Code/foo (best effort)
+      // Decode path: -Users-me-Code-foo => /Users/me/Code/foo (best effort)
       const decoded = ('/' + entry.name.replace(/^-/, '')).replace(/-/g, '/');
       const shortName = decoded.split('/').filter(Boolean).slice(-2).join('/');
       out.push({ name: entry.name, path: decoded, shortName, sessions: sessionCount, lastActivity });

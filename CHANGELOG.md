@@ -2,6 +2,44 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+Fork maintenance — "Sprint 0" from [SPRINT-PLAN.md](SPRINT-PLAN.md). No feature work.
+
+- Security: the live server now binds `127.0.0.1` by default instead of all
+  interfaces. It reads and writes `~/.claude/` without authentication, so LAN
+  reachability is now opt-in via `HOST`. Binding to a non-loopback address prints a
+  warning naming the exposure
+- Tests: the four `skips unreadable …` tests now skip when running as root rather
+  than failing. Root ignores permission bits, so `chmod 000` does not make a file
+  unreadable — the suite was red in any root container, and `.githooks/pre-commit`
+  blocks commits on a red suite. 331 tests, 0 failures as both root and non-root
+- CI: added Node 24 to the test matrix (18, 20, 22, 24)
+- Hooks: removed `autorelease.sh` and `changelog-append.sh`. Both hardcoded an
+  absolute path under the upstream author's home directory, and `autorelease.sh`
+  additionally targeted `polyxmedia/claude-hud-lcars` and the upstream npm package —
+  neither of which a fork can publish to. `changelog-append.sh` was also the source
+  of the malformed historical entries below
+- Hooks: added `guard-merged-branch.sh` (PreToolUse) — refuses `git commit` on a
+  branch whose PR is already merged or closed, since those commits are orphaned.
+  Ported from the husky guard in `mtaylor45/worldmonitor`; no-ops when `gh` is absent
+- Hooks: added `check-dashboard-js.sh` (PostToolUse) — regenerates the dashboard and
+  syntax-checks its ~4,000 lines of client JS after any edit to `src/generate.js`.
+  That code lives in template strings where no linter reaches, so a quoting slip
+  otherwise surfaces only when the page loads. Same check CI runs, moved to edit time
+- Hooks: `.claude/settings.json` was `{}` — the repo shipped hooks wired to nothing.
+  It now registers the two hooks above plus a `SessionStart` dashboard regeneration
+- Docs: added `FORK-ANALYSIS.md` (fork position, code health, security posture, LCARS
+  design conformance, scanner blind spots) and `SPRINT-PLAN.md` (the active plan)
+- Docs: rewrote `ROADMAP.md`. It claimed v1.4.0 and listed the file watcher, MCP
+  health check and session monitor as future work; all three already shipped. It now
+  records measured state and defers to `SPRINT-PLAN.md`
+- Docs: recorded the previously undocumented **file watcher / SSE live-update** and
+  **context burn-rate** subsystems, which shipped without a changelog entry
+- Docs: recorded the PolyForm Noncommercial vs AGPL-3.0 licence boundary in the
+  README — code cannot move between this fork and an AGPL project in either direction
+- Docs: documented the `HOST` environment variable
+
 ## 1.7.1 - 2026-05-08
 
 - Security: `~/.claude/` path containment hardening — replaced naive `startsWith(claudeDir)` with `path.relative` checks so sibling directories like `~/.claude-backup/` can no longer slip past the file-read/open/save guards
