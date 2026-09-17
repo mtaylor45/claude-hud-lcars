@@ -1043,6 +1043,26 @@ return `<!DOCTYPE html>
   /* Additional canonical colors */
   --melrose:#9999FF;--violet:#9966FF;--canary:#FFFF99;
   --magenta:#CC6699;--mariner:#3366CC;
+
+  /* ── Layout scale ──
+     The chrome is fluid in viewport height so a 13" panel is not asked to
+     render desktop-sized furniture. Each value clamps to a legible floor, so
+     it degrades by getting denser, never by getting unreadable. --row-top is
+     shared by the top bar and the sidebar header so the LCARS elbow keeps
+     meeting the rail at the same y. */
+  --sb-w:240px;
+  --row-top:clamp(52px,8vh,72px);
+  /* The stats row does NOT shrink below 48px: its tiles carry a count and a
+     label under it, and 48px is already the measured floor for both to clear
+     (v1.7.1 raised this row for exactly that reason). Vertical space on a
+     short panel comes from --row-burn instead, whose bar is only 26px of
+     content in what was a 56px row. */
+  --row-stats:clamp(48px,6.2vh,52px);
+  --row-burn:clamp(26px,3.6vh,32px);
+  --row-foot:clamp(28px,4.2vh,40px);
+  --nb-h:clamp(34px,4.6vh,54px);
+  --nb-fs:clamp(0.78rem,1.55vh,1.05rem);
+  --nb-pad-y:clamp(4px,0.9vh,8px);
 }
 body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--text);min-height:100vh;overflow:hidden;font-size:14px;padding-top:8px}
 /* ═══ BOOT SEQUENCE ═══ */
@@ -1115,25 +1135,37 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--tex
 *{scrollbar-width:thin;scrollbar-color:var(--orange) #050506}
 
 /* ═══ LCARS LAYOUT ═══ */
-.lcars{display:grid;grid-template-columns:240px 1fr;grid-template-rows:72px 48px 56px 1fr 40px;height:calc(100vh - 8px);column-gap:6px;row-gap:0;padding:0}
+/* grid-template-columns uses minmax(0,1fr), not 1fr: a grid item's automatic
+   minimum size is its min-content width, and the nowrap data cascade and stat
+   tiles push that well past 1280px. With plain 1fr the column grows to fit
+   them and body{overflow:hidden} silently clips the overflow. Same reason the
+   content row is minmax(0,1fr). */
+.lcars{display:grid;grid-template-columns:var(--sb-w) minmax(0,1fr);
+  grid-template-rows:var(--row-top) var(--row-stats) var(--row-burn) minmax(0,1fr) var(--row-foot);
+  height:calc(100vh - 8px);column-gap:6px;row-gap:0;padding:0}
 
 /* ═══ SIDEBAR ═══ */
 .sb{grid-row:1/-1;grid-column:1;display:flex;flex-direction:column;gap:6px}
 
 .sb-top{
   background:var(--orange);
-  padding:14px 20px 10px;min-height:72px;
-  border-radius:0 0 56px 0;
+  padding:clamp(8px,1.4vh,14px) 20px clamp(6px,1vh,10px);min-height:var(--row-top);
+  border-radius:0 0 56px 0;flex-shrink:0;
 }
-.sb-top h1{font-family:'Antonio',sans-serif;font-size:2rem;font-weight:700;color:var(--bg);line-height:1;text-transform:uppercase;letter-spacing:0.02em}
+.sb-top h1{font-family:'Antonio',sans-serif;font-size:clamp(1.3rem,2.9vh,2rem);font-weight:700;color:var(--bg);line-height:1;text-transform:uppercase;letter-spacing:0.02em}
 .sb-top small{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:rgba(0,0,0,0.45);display:block;margin-top:4px;letter-spacing:0.1em}
 
-.sb-nav{display:flex;flex-direction:column;gap:4px;flex:1;min-height:0;overflow-y:auto}
+/* overflow-y:scroll + scrollbar-gutter:stable, not auto: with overlay
+   scrollbars an auto container reserves no gutter and shows no thumb at rest,
+   so a nav taller than its box looks truncated rather than scrollable. The
+   gutter is the affordance. */
+.sb-nav{display:flex;flex-direction:column;gap:4px;flex:1 1 auto;min-height:0;
+  overflow-y:scroll;overflow-x:hidden;scrollbar-gutter:stable;overscroll-behavior:contain}
 
 .nb{
   display:flex;align-items:center;justify-content:space-between;
-  padding:8px 20px;min-height:54px;flex-shrink:0;border:none;cursor:pointer;
-  font-family:'Antonio',sans-serif;font-size:1.05rem;font-weight:500;line-height:1.1;
+  padding:var(--nb-pad-y) 20px;min-height:var(--nb-h);flex-shrink:0;border:none;cursor:pointer;
+  font-family:'Antonio',sans-serif;font-size:var(--nb-fs);font-weight:500;line-height:1.1;
   letter-spacing:0.06em;text-transform:uppercase;color:var(--bg);
   border-radius:0 24px 24px 0;transition:filter 0.12s,transform 0.12s;
   text-align:left;
@@ -1144,20 +1176,20 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--tex
 
 .sb-foot{
   background:var(--orange);border-radius:0 56px 0 0;
-  padding:14px 20px;font-size:0.78rem;color:rgba(0,0,0,0.5);
-  letter-spacing:0.08em;margin-top:auto;font-weight:600;
+  padding:clamp(7px,1.2vh,14px) 20px;font-size:clamp(0.6rem,1vh,0.78rem);color:rgba(0,0,0,0.5);
+  letter-spacing:0.08em;margin-top:auto;font-weight:600;flex-shrink:0;
 }
 
 /* ═══ TOP BAR ═══ */
-.tb{grid-column:2;display:flex;gap:6px}
+.tb{grid-column:2;display:flex;gap:6px;min-width:0}
 .tb{margin-bottom:6px}
 .tb-elbow{width:72px;background:var(--orange);border-radius:0 0 0 56px;flex-shrink:0}
 /* tb-fill is black — like the reference right-frame-top, data cascade is orange-on-black */
-.tb-fill{flex:1;background:var(--bg);display:flex;align-items:center;justify-content:flex-end;padding:0 24px;gap:28px;
+.tb-fill{flex:1;min-width:0;background:var(--bg);display:flex;align-items:center;justify-content:flex-end;padding:0 24px;gap:28px;
   font-family:'Antonio',sans-serif;font-size:0.95rem;letter-spacing:0.1em;color:rgba(255,153,0,0.55);text-transform:uppercase;overflow:hidden;
   border-bottom:2px solid rgba(255,153,0,0.15)}
 /* ═══ DATA CASCADE ═══ */
-.tb-dc{display:flex;gap:10px;flex:1;overflow:hidden;align-items:center;padding:0 0 0 8px;pointer-events:none}
+.tb-dc{display:flex;gap:10px;flex:1;min-width:0;overflow:hidden;align-items:center;padding:0 0 0 8px;pointer-events:none}
 .tb-dc-col{display:flex;flex-direction:column;gap:0}
 .tb-dc-n{font-family:'Antonio',sans-serif;font-size:0.6rem;letter-spacing:0.04em;line-height:1.4;text-align:right;white-space:nowrap}
 @keyframes dc1{0%,4%{color:rgba(255,153,0,0)}8%,45%{color:rgba(255,153,0,0.4)}48%,52%{color:rgba(255,255,255,0.7)}56%,67%{color:rgba(255,153,0,0.4)}70%,73%{color:rgba(255,255,255,0.6)}76%,100%{color:rgba(255,153,0,0.35)}}
@@ -1175,8 +1207,8 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--tex
 .tb-a2{width:60px;background:var(--blue);border-radius:0 0 24px 0}
 
 /* ═══ STATS BAR ═══ */
-.stb{grid-column:2;display:flex;gap:6px;margin-bottom:6px}
-.stb-inner{flex:1;display:flex;gap:3px;padding:3px 0 3px 8px;background:var(--lavender);border-radius:24px;overflow:hidden}
+.stb{grid-column:2;display:flex;gap:6px;margin-bottom:6px;min-width:0}
+.stb-inner{flex:1;min-width:0;display:flex;gap:3px;padding:3px 0 3px 8px;background:var(--lavender);border-radius:24px;overflow:hidden}
 .st{flex:1;background:var(--bg);padding:5px 12px;text-align:center;border-radius:0;border-right:2px solid rgba(204,153,204,0.25)}
 .st:first-child{border-radius:20px 0 0 20px}
 .st:last-child{border-right:none;border-radius:0 20px 20px 0}
@@ -1185,7 +1217,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--tex
 .st-l{font-size:0.6rem;color:var(--text);text-transform:uppercase;letter-spacing:0.12em;margin-top:2px}
 
 /* ═══ BURN RATE BAR ═══ */
-.brb{grid-column:2;display:flex;align-items:center;gap:10px;padding:4px 16px 4px 80px;background:var(--bg);font-family:'Antonio',sans-serif;font-size:0.7rem;letter-spacing:0.08em;color:var(--dim);min-height:26px}
+.brb{grid-column:2;min-width:0;display:flex;align-items:center;gap:10px;padding:4px 16px 4px 80px;background:var(--bg);font-family:'Antonio',sans-serif;font-size:0.7rem;letter-spacing:0.08em;color:var(--dim);min-height:26px}
 .brb-bar{display:flex;gap:1px;align-items:center}
 .brb-block{width:14px;height:10px;border-radius:2px}
 .brb-block.filled{background:var(--orange)}
@@ -1202,7 +1234,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--tex
 @keyframes lcars-bounce{0%,100%{height:6px}50%{height:22px}}
 
 /* ═══ MAIN AREA ═══ */
-.mn{grid-column:2;display:flex;gap:0;min-height:0;overflow:hidden;margin-top:6px}
+.mn{grid-column:2;display:flex;gap:0;min-height:0;min-width:0;overflow:hidden;margin-top:6px}
 .mn-edge{width:72px;flex-shrink:0;display:flex;flex-direction:column;gap:0;position:relative;background:none}
 .mne-p{flex-shrink:0;border-radius:0 16px 16px 0}
 .mne-p:first-child{border-radius:0 16px 0 0}
@@ -1871,7 +1903,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--tex
 
 /* ═══ GLOBAL COMPUTER BAR ═══ */
 .computer-bar{
-  position:fixed;bottom:0;left:240px;right:0;z-index:50;
+  position:fixed;bottom:0;left:var(--sb-w);right:0;z-index:50;
   display:flex;gap:0;background:var(--bg);border-top:3px solid var(--orange);
 }
 .computer-bar-label{
@@ -1914,7 +1946,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--tex
 
 /* Computer response overlay */
 .computer-response{
-  position:fixed;bottom:45px;left:240px;right:0;
+  position:fixed;bottom:45px;left:var(--sb-w);right:0;
   max-height:40vh;overflow-y:auto;
   background:#08080aee;border-top:2px solid var(--orange);
   border-radius:24px 24px 0 0;
@@ -2135,7 +2167,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--tex
 }
 
 /* ═══ BOTTOM BAR ═══ */
-.bb{grid-column:2;display:flex;gap:0;margin-top:4px}
+.bb{grid-column:2;display:flex;gap:0;margin-top:4px;min-width:0}
 .bb-elbow{width:72px;background:var(--lavender);flex-shrink:0;position:relative}
 .bb-elbow::before{
   content:'';position:absolute;top:0;left:0;right:0;bottom:0;
@@ -2145,9 +2177,38 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--tex
   font-size:0.65rem;color:rgba(0,0,0,0.35);letter-spacing:0.06em;border-radius:0 0 32px 0}
 .bb-a{width:160px;background:var(--blue);border-radius:32px 0 0 32px}
 
+/* ── Narrow-desktop band ──
+   Between roughly a 13" panel and a wide display, give width back to content
+   by narrowing the rail rather than by clipping anything. */
+@media(max-width:1180px){
+  :root{--sb-w:200px}
+  .nb{padding:var(--nb-pad-y) 14px;letter-spacing:0.03em}
+  .tb-fill{padding:0 14px;gap:16px}
+}
+@media(max-width:1020px){
+  :root{--sb-w:176px}
+  .nb .nc{display:none}
+}
+
+/* ── Tablet and below ──
+   The rail becomes a horizontal, scrollable strip. It is NOT hidden: the
+   previous rule set .sb{display:none}, which removed every route into the
+   dashboard below 900px with nothing put in its place. */
 @media(max-width:900px){
-  .lcars{grid-template-columns:1fr;grid-template-rows:auto auto 1fr auto}
-  .sb{display:none}
+  :root{--sb-w:0px}
+  .lcars{grid-template-columns:minmax(0,1fr);
+    grid-template-rows:auto auto auto auto minmax(0,1fr) auto;height:calc(100vh - 8px)}
+  .sb{grid-row:auto;grid-column:1;flex-direction:row;align-items:stretch;gap:4px;min-width:0}
+  .sb-top{min-height:0;border-radius:0 0 24px 0;display:flex;flex-direction:column;
+    justify-content:center;padding:6px 14px;flex-shrink:0}
+  .sb-top h1{font-size:1.15rem}
+  .sb-top small{display:none}
+  .sb-nav{flex-direction:row;gap:4px;overflow-x:auto;overflow-y:hidden;
+    scrollbar-gutter:auto;min-width:0}
+  .nb{border-radius:0 18px 18px 0;white-space:nowrap;min-height:40px;
+    justify-content:flex-start;gap:8px;padding:6px 14px}
+  .sb-foot{display:none}
+  .tb,.stb,.brb,.mn,.bb{grid-column:1}
   .mn-content.open{grid-template-columns:1fr}
   .dp{position:fixed;inset:0;z-index:100;border-left:none}
 }
