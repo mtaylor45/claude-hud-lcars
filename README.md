@@ -67,6 +67,48 @@ Sections, each one clickable:
 
 Every row is clickable. The detail panel slides open on the right, renders the markdown properly with headers, tables, code blocks, lists, the works. JSON configs get syntax highlighted automatically with color-coded keys, strings, numbers, and booleans. It genuinely looks like you're reading a classified Starfleet briefing.
 
+## Workspaces
+
+Your skills, MCP servers and agent instructions mostly do not live in
+`~/.claude/` — they live in your repositories. Register where to look and they
+show up alongside the global ones:
+
+```json
+// ~/.lcars/workspaces.json
+{
+  "roots": ["~/Code", "~/Projects"],
+  "pinned": ["~/work/some-repo-outside-a-root"],
+  "worktreePattern": "^(?<project>.+?)-wt-.+$"
+}
+```
+
+Each directory **one level** under a root counts as a project if it contains any
+of `AGENTS.md`, `CLAUDE.md`, `mcp.json`, `.mcp.json`, `plugin.json`, `skills/`,
+`.agents/` or `.claude/`. A directory with none of those is skipped, so the
+registry stays useful rather than becoming a listing of `~/Code`.
+
+What gets picked up per project:
+
+| Source | What it surfaces |
+|---|---|
+| `skills/*/SKILL.md`, `.agents/skills/*/SKILL.md`, `.claude/skills/*/SKILL.md` | Skills, badged with the project they came from |
+| `mcp.json`, `.mcp.json`, `.claude/settings.json` | MCP servers, including remote `streamable-http` / `http` / `sse` ones with their URL |
+| `AGENTS.md`, `CLAUDE.md`, `.claude/CLAUDE.md` | Instruction files, scored for health like the global `CLAUDE.md` |
+| `plugin.json` | Agent-plugin manifest (name, version, licence) |
+| `review_agents:` frontmatter in any root `.md` | Review subagents a plugin runs on the repo |
+
+`pinned` adds a repository that is not under any root. `worktreePattern`
+collapses per-task worktrees onto their project — a named capture group
+`project` if present, else capture group 1 — and deduplicates their assets, so
+four active worktrees do not report the same skills four times.
+
+Project skills and servers are **read-only** in the dashboard. DELETE is
+withheld, and the DISABLE toggle is not offered for a project MCP server
+because it writes to `~/.claude/settings.json`, which is not where that server
+is declared. Edit them in the project.
+
+With nothing registered, the PROJECTS section tells you what to create.
+
 ## Search
 
 Hit `Cmd+K` (or `Ctrl+K`, or `/`) from any screen to open universal search. It searches across everything: skills, hooks, MCP servers, agents, memory files, sessions, CLAUDE.md content, environment variables, plugins. Results are colour-coded by type with match highlighting. Click a result to jump straight to that item in its section. `Escape` to close, `Enter` to open the first result.
@@ -184,7 +226,7 @@ Environment:
 | `CLAUDE_DASHBOARD_API_KEY` | (none) | Required for COMPUTER bar chat. Get one at [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys). Intentionally separate from `ANTHROPIC_API_KEY` — see note in the COMPUTER bar section above. |
 | `CLAUDE_MODEL` | `claude-sonnet-4-6` | Which model the COMPUTER bar talks to (also configurable in the CONFIG panel) |
 | `PORT` | `3200` | Server port for live mode |
-| `CLAUDE_HUD_DIRS` | (none) | Extra directories to scan for `.mcp.json` files, colon-separated. e.g. `~/work:~/clients` |
+| `CLAUDE_HUD_DIRS` | (none) | Extra directories to scan for project agent config, colon-separated. e.g. `~/work:~/clients`. Merged with the roots in `~/.lcars/workspaces.json` — see [Workspaces](#workspaces) |
 | `HOST` | `127.0.0.1` | Bind address for live mode. Loopback by default — the server reads and writes `~/.claude/` with no authentication, so it should not be reachable from the LAN. Set `HOST=0.0.0.0` only deliberately, and put something in front of it. |
 
 ## How it actually works

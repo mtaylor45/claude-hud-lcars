@@ -59,6 +59,11 @@ attribution) and test fixtures.*
 
 ## Sprint 1 — Workspace awareness
 
+**Status: 1.1, 1.2 and 1.3 done; 1.4 partial.** Project assets now appear inside
+the existing sections with an origin badge, and a PROJECTS panel lists each
+project and drills into it. The project *filter* axis described in 1.4 is still
+open — see the note under that heading.
+
 *The main event. Turns the dashboard from a view of `~/.claude/` into a view of
 your machine's agent configuration.*
 
@@ -112,6 +117,13 @@ assets; "ALL" keeps today's behaviour. Show a per-project `AGENTS.md`/`CLAUDE.md
 health score and asset counts on the project row itself.
 
 This is the smallest UI change that makes a multi-repo setup legible.
+
+> **Not done.** The scanner work landed without this. Project assets are visible
+> in every section, badged by origin, and the PROJECTS panel gives a per-project
+> view — but selecting a project does not yet filter the other sections. That
+> filter touches every section's render path, so it was left out rather than
+> doubling the diff of a scanner change. The remaining work is the selector and
+> the filter, not the data.
 
 **Done when:** opening the dashboard with `~/Code` registered shows 26 skills,
 2 MCP servers, an `AGENTS.md` with a health score, and `worldmonitor`'s
