@@ -34,7 +34,11 @@ Sprint 0 clears the fork residue that would otherwise bite during all of the abo
 
 ## Sprint 0 — Take ownership
 
-*Small. Everything here is a precondition for working in this repo at all.*
+**Status: done.** See the Unreleased section of [CHANGELOG.md](CHANGELOG.md) for what
+landed. Tests are green as root and non-root, CI covers Node 18/20/22/24, and no
+operative path in the repo points outside it.
+
+*Small. Everything here was a precondition for working in this repo at all.*
 
 | # | Task | Why now |
 |---|---|---|
@@ -47,7 +51,9 @@ Sprint 0 clears the fork residue that would otherwise bite during all of the abo
 | 0.7 | Add Node 24 to the CI matrix | `worldmonitor` standardises on 24 via `.nvmrc`; this repo tests 18/20/22. Keep 18 while `engines` claims it. |
 
 **Done when:** `npm test` is green as root and as you, CI passes on 18/20/22/24,
-and no file in the repo references a path that is not yours.
+and no file in the repo references a path that is not yours. — *met; the only
+remaining mentions of the upstream author are the README Credits (required
+attribution) and test fixtures.*
 
 ---
 

@@ -17,6 +17,15 @@ function rimraf(dir) {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
+// Root bypasses file permission bits, so a chmod 000 file stays readable and the
+// "skips unreadable file" tests below cannot hold. Containers commonly run as
+// root, and .githooks/pre-commit blocks commits on a red suite, so skip these
+// rather than fail where the premise does not apply.
+const RUNNING_AS_ROOT = typeof process.getuid === 'function' && process.getuid() === 0;
+const skipIfRoot = RUNNING_AS_ROOT
+  ? { skip: 'running as root: file permission bits are not enforced' }
+  : {};
+
 function generateDashboardHtml(root) {
   execSync('node src/generate.js --no-open', { cwd: root, stdio: 'pipe' });
   return fs.readFileSync(path.join(root, 'dashboard.html'), 'utf-8');
@@ -294,7 +303,7 @@ describe('getSkills', () => {
     } finally { rimraf(tmp); }
   });
 
-  test('skips unreadable SKILL.md without crashing', () => {
+  test('skips unreadable SKILL.md without crashing', skipIfRoot, () => {
     const tmp = makeTmpDir();
     try {
       const d = path.join(tmp, 'skills', 'bad');
@@ -381,7 +390,7 @@ describe('getAgents', () => {
     } finally { rimraf(tmp); }
   });
 
-  test('skips unreadable agent files without crashing', () => {
+  test('skips unreadable agent files without crashing', skipIfRoot, () => {
     const tmp = makeTmpDir();
     try {
       fs.mkdirSync(path.join(tmp, 'agents'), { recursive: true });
@@ -444,7 +453,7 @@ describe('getMemoryFiles', () => {
     } finally { rimraf(tmp); }
   });
 
-  test('skips unreadable memory files without crashing', () => {
+  test('skips unreadable memory files without crashing', skipIfRoot, () => {
     const tmp = makeTmpDir();
     try {
       const memDir = path.join(tmp, 'projects', 'proj', 'memory');
@@ -1007,7 +1016,7 @@ describe('getClaudeMdFiles', () => {
     } finally { rimraf(tmp); }
   });
 
-  test('skips unreadable CLAUDE.md without crashing', () => {
+  test('skips unreadable CLAUDE.md without crashing', skipIfRoot, () => {
     const tmp = makeTmpDir();
     try {
       const f = path.join(tmp, 'CLAUDE.md');

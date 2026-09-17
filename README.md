@@ -174,6 +174,7 @@ Environment:
   CLAUDE_DASHBOARD_API_KEY    Required for chat (live mode)
   ELEVENLABS_API_KEY   Optional premium voice
   PORT                 Server port (default: 3200)
+  HOST                 Bind address (default: 127.0.0.1)
 ```
 
 ## Configuration
@@ -184,6 +185,7 @@ Environment:
 | `CLAUDE_MODEL` | `claude-sonnet-4-6` | Which model the COMPUTER bar talks to (also configurable in the CONFIG panel) |
 | `PORT` | `3200` | Server port for live mode |
 | `CLAUDE_HUD_DIRS` | (none) | Extra directories to scan for `.mcp.json` files, colon-separated. e.g. `~/work:~/clients` |
+| `HOST` | `127.0.0.1` | Bind address for live mode. Loopback by default — the server reads and writes `~/.claude/` with no authentication, so it should not be reachable from the LAN. Set `HOST=0.0.0.0` only deliberately, and put something in front of it. |
 
 ## How it actually works
 
@@ -263,6 +265,25 @@ For display issues, a screenshot helps a lot.
 ## License
 
 [PolyForm Noncommercial License 1.0.0](LICENSE) — free for personal and open source use, no commercial use permitted.
+
+### Fork note — the licence boundary
+
+This repository is a fork of [`polyxmedia/claude-hud-lcars`](https://github.com/polyxmedia/claude-hud-lcars)
+and stays under PolyForm Noncommercial 1.0.0.
+
+PolyForm Noncommercial is **not** GPL-compatible. That matters if you also work on
+an AGPL or GPL project and are tempted to share code between them:
+
+| Direction | Allowed? |
+|---|---|
+| Code from this repo → an AGPL/GPL project | **No** |
+| AGPL/GPL code → this repo | **No** |
+| Design token *values* and written design rules, either way | Yes — facts and decisions, not copyrightable expression |
+
+So a shared design system travels as **tokens plus a written style guide**, reimplemented
+per repository. It does not travel as a shared CSS or TypeScript module. See
+[FORK-ANALYSIS.md §1.1](FORK-ANALYSIS.md) for the full reasoning and
+[SPRINT-PLAN.md](SPRINT-PLAN.md) for how the work is scoped around it.
 
 ## Credits
 
